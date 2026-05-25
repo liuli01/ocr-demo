@@ -27,6 +27,7 @@ MODELS = {
     "PaddleOCR-VL-1.5 (0.9B)": "PaddlePaddle/PaddleOCR-VL-1.5",
     "DeepSeek-OCR (3B)": "deepseek-ai/DeepSeek-OCR",
     "Qwen3-VL-8B": "Qwen/Qwen3-VL-8B-Instruct",
+    "Qwen3.5-9B": "Qwen/Qwen3.5-9B",
     "Qwen3-VL-32B": "Qwen/Qwen3-VL-32B-Instruct",
     "GLM-4.5V (106B)": "zai-org/GLM-4.5V",
 }
@@ -198,7 +199,8 @@ def encode_image(image_path: str) -> str:
 def ocr_recognize(image_path: str, model_id: str, prompt: str,
                   temperature: float, max_tokens: int,
                   top_p: float = 0.7, top_k: int = 50,
-                  frequency_penalty: float = 0.0) -> dict:
+                  frequency_penalty: float = 0.0,
+                  enable_thinking: bool = False) -> dict:
     client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
     image_data = encode_image(image_path)
 
@@ -223,9 +225,14 @@ def ocr_recognize(image_path: str, model_id: str, prompt: str,
         top_p=top_p,
         frequency_penalty=frequency_penalty,
     )
-    # DeepSeek-OCR 支持 top_k，SiliconFlow API 兼容参数
+    # 模型特定参数
+    extra = {}
     if "DeepSeek" in model_id:
-        kwargs["extra_body"] = {"top_k": top_k}
+        extra["top_k"] = top_k
+    if "Qwen3.5-9B" in model_id:
+        extra.update({"top_k": top_k, "enable_thinking": enable_thinking, "min_p": 0, "repetition_penalty": 1})
+    if extra:
+        kwargs["extra_body"] = extra
     response = client.chat.completions.create(**kwargs)
     elapsed = time.time() - start
     result = response.choices[0].message.content
@@ -273,22 +280,23 @@ with col1:
     model_label = st.selectbox("模型选择", list(MODELS.keys()), index=0, key="model_select")
     model_id = MODELS[model_label]
 
-    st.caption("PaddleOCR-VL(0.9B) → DeepSeek-OCR(3B) → Qwen3-VL(8B/32B) → GLM-4.5V(106B)")
+    st.caption("PaddleOCR-VL(0.9B) → DeepSeek-OCR(3B) → Qwen3-VL(8B) → Qwen3.5-9B(9B) → Qwen3-VL(32B) → GLM-4.5V(106B)")
 
     with st.expander("📊 模型对比", expanded=False):
         st.markdown("""
 | 模型 | 参数量 | 耗时 | 表格输出 | 推荐场景 |
 |------|--------|------|----------|----------|
-| **GLM-4.5V** | 106B | ~43s | ✅ 原生管道表 | 复杂表格首选 |
-| **Qwen3-VL-32B** | 32B | ~108s | ✅ 原生管道表 | 效果优先 |
-| **Qwen3-VL-8B** | 8B | ~46s | ✅ 原生管道表 | 平衡之选 |
-| **DeepSeek-OCR** | 3B | ~5-9s | ⚠️ 需清洗 | **速度最快，默认推荐** |
 | **PaddleOCR-VL-1.5** | 0.9B | ~90s | ❌ 逐行无结构 | 不推荐表格场景 |
+| **DeepSeek-OCR** | 3B | ~5-9s | ⚠️ 需清洗 | **速度最快，默认推荐** |
+| **Qwen3-VL-8B** | 8B | ~46s | ✅ 原生管道表 | 平衡之选 |
+| **Qwen3.5-9B** | 9B | ~248s | ✅ 管道表 | 多模态模型，不止 OCR |
+| **Qwen3-VL-32B** | 32B | ~108s | ✅ 原生管道表 | 效果优先 |
+| **GLM-4.5V** | 106B | ~43s | ✅ 原生管道表 | 复杂表格首选 |
 """)
 
     # 模型切换时自动更新提示词
     if "prev_model" not in st.session_state or st.session_state.prev_model != model_label:
-        new_prompt = PROMPT_PIPE if ("GLM" in model_id or "Qwen" in model_id) else DEFAULT_PROMPT
+        new_prompt = PROMPT_PIPE if ("GLM" in model_id or "Qwen" in model_id or "3.5-9B" in model_id) else DEFAULT_PROMPT
         st.session_state.current_prompt = new_prompt
         st.session_state.prompt_input = new_prompt  # 同步更新 widget 状态
         st.session_state.prev_model = model_label
@@ -301,7 +309,7 @@ with col1:
     if "GLM" in model_id:
         st.info("✅ GLM-4.5V 使用**管道表 prompt**，直接输出 `|` 格式表格")
     elif "Qwen" in model_id:
-        st.info("✅ Qwen3-VL-8B/32B 使用**管道表 prompt**，直接输出 `|` 格式表格")
+        st.info("✅ Qwen3-VL/3.5-9B 使用**管道表 prompt**，直接输出 `|` 格式表格")
     else:
         st.info("📝 DeepSeek/PaddleOCR 使用**通用 prompt**，输出后自动转管道表")
 
@@ -316,6 +324,13 @@ with col1:
         top_k = st.slider("Top-K", 0, 100, 50, 1)
     frequency_penalty = st.slider("频率惩罚", 0.0, 2.0, 0.0, 0.1)
 
+    # Qwen3.5-9B 思考模式开关（默认关闭）
+    is_qwen35 = "Qwen3.5-9B" in model_id
+    enable_thinking = st.checkbox("🧠 启用思考模式 (enable_thinking)",
+                                   value=False,
+                                   disabled=not is_qwen35,
+                                   help="Qwen3.5-9B 专用：启用后模型会先思考再回答，效果更好但耗时大幅增加（约4分钟）")
+
     recognize_btn = st.button("🚀 开始识别", type="primary", width="stretch")
 
 with col2:
@@ -328,7 +343,8 @@ with col2:
             with st.spinner(f"正在识别...（模型：{model_label}）"):
                 try:
                     data = ocr_recognize(temp_path, model_id, prompt, temperature, max_tokens,
-                                         top_p, top_k, frequency_penalty)
+                                         top_p, top_k, frequency_penalty,
+                                         enable_thinking)
 
                     # 显示识别信息
                     col_info1, col_info2, col_info3 = st.columns(3)
