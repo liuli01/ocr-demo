@@ -24,11 +24,11 @@ except Exception:
 BASE_URL = "https://api.siliconflow.cn/v1"
 
 MODELS = {
-    "DeepSeek-OCR": "deepseek-ai/DeepSeek-OCR",
-    "GLM-4.5V": "zai-org/GLM-4.5V",
+    "PaddleOCR-VL-1.5 (0.9B)": "PaddlePaddle/PaddleOCR-VL-1.5",
+    "DeepSeek-OCR (3B)": "deepseek-ai/DeepSeek-OCR",
     "Qwen3-VL-8B": "Qwen/Qwen3-VL-8B-Instruct",
     "Qwen3-VL-32B": "Qwen/Qwen3-VL-32B-Instruct",
-    "PaddleOCR-VL-1.5": "PaddlePaddle/PaddleOCR-VL-1.5",
+    "GLM-4.5V (106B)": "zai-org/GLM-4.5V",
 }
 
 DEFAULT_PROMPT = "请识别这张表格中的所有文字，按表格结构逐行输出，不要重复，不要额外说明"
@@ -107,6 +107,23 @@ def _pipe_to_table(text: str) -> str:
         rows.append(cells)
     if col_count == 0:
         return text
+    # 单列模式（PaddleOCR 逐行输出）：两两配对为 key-value
+    if col_count == 1:
+        flat = [c[0] for c in rows if c[0]]
+        paired = []
+        i = 0
+        while i < len(flat):
+            paired.append([flat[i], flat[i + 1] if i + 1 < len(flat) else ""])
+            i += 2
+        if paired:
+            max_c = max(len(r) for r in paired)
+            out = []
+            for j, cells in enumerate(paired):
+                padded = cells + [""] * (max_c - len(cells))
+                out.append("| " + " | ".join(padded) + " |")
+                if j == 0:
+                    out.append("|" + "|".join("---" for _ in range(max_c)) + "|")
+            return "\n".join(out)
     out = []
     for i, cells in enumerate(rows):
         padded = cells + [""] * (col_count - len(cells))
@@ -119,6 +136,7 @@ def _pipe_to_table(text: str) -> str:
 def clean_ocr_output(text: str) -> str:
     """清理 OCR 输出：HTML 表格 / 管道表 / 纯文本 → 标准管道表"""
     text = re.sub(r"^.*?(<table|<tr)", r"\1", text, flags=re.DOTALL)
+    text = re.sub(r"<\|LOC_\d+\|>", "", text)
     text = text.replace("<|begin_of_box|>", "").replace("<|end_of_box|>", "").strip()
 
     # 情况1：标准管道表（含 |---| 分隔线），规整列数
@@ -140,6 +158,17 @@ def clean_ocr_output(text: str) -> str:
             if i == 0 and len(rows) > 1:  # 首行后加分隔线
                 pipe_lines.append("|" + "|".join("---" for _ in range(len(texts))) + "|")
         return "\n".join(pipe_lines)
+
+    # 情况2.5：纯文本逐行内容 → 单列表格（PaddleOCR 常见输出）
+    lines_raw = [l.strip() for l in text.split("\n") if l.strip()]
+    if (not text.startswith("|") and "|" not in text
+            and len(lines_raw) > 3
+            and max(len(l) for l in lines_raw) < 100):
+        col_single = max(len(l) for l in lines_raw)
+        out = "| 内容 |\n|---|---|\n"
+        for l in lines_raw:
+            out += f"| {l} |\n"
+        return out.strip()
 
     # 情况3：Tab/空格分隔文本转管道表
     lines = text.split("\n")
@@ -230,21 +259,32 @@ with col1:
         temp_path = f"_temp/{uploaded_file.name}"
         with open(temp_path, "wb") as f:
             f.write(uploaded_file.getvalue())
-        st.image(temp_path, width=700)
+        st.image(temp_path, width="stretch")
     else:
         temp_path = DEFAULT_IMAGE
         if os.path.exists(temp_path):
-            st.image(temp_path, width=700, caption="默认测试图片（干部任免审批表）")
+            st.image(temp_path, width="stretch", caption="默认测试图片（干部任免审批表）")
         else:
             st.info("📤 请上传图片进行识别")
 
     st.divider()
     st.subheader("⚙️ 参数设置")
 
-    model_label = st.selectbox("模型选择", list(MODELS.keys()), index=1, key="model_select")
+    model_label = st.selectbox("模型选择", list(MODELS.keys()), index=0, key="model_select")
     model_id = MODELS[model_label]
 
-    st.caption("DeepSeek-OCR 最快  |  GLM-4.5V 推荐表格  |  Qwen3-VL 8B/32B  |  PaddleOCR 完整但慢")
+    st.caption("PaddleOCR-VL(0.9B) → DeepSeek-OCR(3B) → Qwen3-VL(8B/32B) → GLM-4.5V(106B)")
+
+    with st.expander("📊 模型对比", expanded=False):
+        st.markdown("""
+| 模型 | 参数量 | 耗时 | 表格输出 | 推荐场景 |
+|------|--------|------|----------|----------|
+| **GLM-4.5V** | 106B | ~43s | ✅ 原生管道表 | 复杂表格首选 |
+| **Qwen3-VL-32B** | 32B | ~108s | ✅ 原生管道表 | 效果优先 |
+| **Qwen3-VL-8B** | 8B | ~46s | ✅ 原生管道表 | 平衡之选 |
+| **DeepSeek-OCR** | 3B | ~5-9s | ⚠️ 需清洗 | **速度最快，默认推荐** |
+| **PaddleOCR-VL-1.5** | 0.9B | ~90s | ❌ 逐行无结构 | 不推荐表格场景 |
+""")
 
     # 模型切换时自动更新提示词
     if "prev_model" not in st.session_state or st.session_state.prev_model != model_label:
@@ -274,7 +314,7 @@ with col1:
         top_k = st.slider("Top-K", 0, 100, 50, 1)
     frequency_penalty = st.slider("频率惩罚", 0.0, 2.0, 0.0, 0.1)
 
-    recognize_btn = st.button("🚀 开始识别", type="primary", use_container_width=True)
+    recognize_btn = st.button("🚀 开始识别", type="primary", width="stretch")
 
 with col2:
     st.subheader("📄 识别结果")
