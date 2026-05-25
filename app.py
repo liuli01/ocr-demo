@@ -288,7 +288,9 @@ with col1:
 
     # 模型切换时自动更新提示词
     if "prev_model" not in st.session_state or st.session_state.prev_model != model_label:
-        st.session_state.current_prompt = PROMPT_PIPE if ("GLM" in model_id or "Qwen" in model_id) else DEFAULT_PROMPT
+        new_prompt = PROMPT_PIPE if ("GLM" in model_id or "Qwen" in model_id) else DEFAULT_PROMPT
+        st.session_state.current_prompt = new_prompt
+        st.session_state.prompt_input = new_prompt  # 同步更新 widget 状态
         st.session_state.prev_model = model_label
 
     prompt = st.text_area("识别提示词", st.session_state.current_prompt, height=100,
