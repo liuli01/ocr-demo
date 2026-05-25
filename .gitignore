@@ -1,0 +1,7 @@
+# Streamlit OCR Demo
+
+__pycache__/
+_temp/
+*.pyc
+.DS_Store
+.streamlit/secrets.toml
