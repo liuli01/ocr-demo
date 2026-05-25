@@ -21,7 +21,7 @@ try:
     API_KEY = st.secrets.get("API_KEY") or os.getenv("SILICONFLOW_API_KEY") or "sk-yvfxmydciruabzrpxmnaptmrvkgitkjhjjgroibaudfprhrw"
 except Exception:
     API_KEY = os.getenv("SILICONFLOW_API_KEY") or "sk-yvfxmydciruabzrpxmnaptmrvkgitkjhjjgroibaudfprhrw"
-BASE_URL = "https://api.siliconflow.cn/v1"
+DEFAULT_BASE_URL = "https://api.siliconflow.cn/v1"
 
 MODELS = {
     "PaddleOCR-VL-1.5 (0.9B)": "PaddlePaddle/PaddleOCR-VL-1.5",
@@ -47,6 +47,10 @@ if "history" not in st.session_state:
     st.session_state.history = []
 if "current_prompt" not in st.session_state:
     st.session_state.current_prompt = PROMPT_PIPE
+if "base_url" not in st.session_state:
+    st.session_state.base_url = DEFAULT_BASE_URL
+if "custom_model" not in st.session_state:
+    st.session_state.custom_model = ""
 
 
 import re
@@ -200,8 +204,9 @@ def ocr_recognize(image_path: str, model_id: str, prompt: str,
                   temperature: float, max_tokens: int,
                   top_p: float = 0.7, top_k: int = 50,
                   frequency_penalty: float = 0.0,
-                  enable_thinking: bool = False) -> dict:
-    client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
+                  enable_thinking: bool = False,
+                  base_url: str = None) -> dict:
+    client = OpenAI(api_key=API_KEY, base_url=base_url or DEFAULT_BASE_URL)
     image_data = encode_image(image_path)
 
     # DeepSeek-OCR 和 PaddleOCR 不理解管道表指令
@@ -277,8 +282,25 @@ with col1:
     st.divider()
     st.subheader("⚙️ 参数设置")
 
-    model_label = st.selectbox("模型选择", list(MODELS.keys()), index=0, key="model_select")
+    model_label = st.selectbox("模型选择", list(MODELS.keys()), index=1, key="model_select")
     model_id = MODELS[model_label]
+
+    # 自定义 API 配置（默认收起）
+    show_custom_api = st.checkbox("自定义 API 配置", value=False,
+                                   help="启用后可自定义 API 地址和模型名称")
+    if show_custom_api:
+        with st.container():
+            st.text_input("API 地址",
+                          value=st.session_state.base_url,
+                          key="base_url",
+                          help="OpenAI 兼容 API 的 base URL，如 https://api.siliconflow.cn/v1")
+            st.text_input("自定义模型名（优先级高于下拉框）",
+                          value=st.session_state.get("custom_model", ""),
+                          key="custom_model",
+                          placeholder="留空则使用下拉框选择的模型",
+                          help="如填写，将覆盖下拉框的模型选择，直接使用此模型名请求")
+        if st.session_state.custom_model:
+            model_id = st.session_state.custom_model
 
     st.caption("PaddleOCR-VL(0.9B) → DeepSeek-OCR(3B) → Qwen3-VL(8B) → Qwen3.5-9B(9B) → Qwen3-VL(32B) → GLM-4.5V(106B)")
 
@@ -344,7 +366,8 @@ with col2:
                 try:
                     data = ocr_recognize(temp_path, model_id, prompt, temperature, max_tokens,
                                          top_p, top_k, frequency_penalty,
-                                         enable_thinking)
+                                         enable_thinking,
+                                         base_url=st.session_state.base_url)
 
                     # 显示识别信息
                     col_info1, col_info2, col_info3 = st.columns(3)
