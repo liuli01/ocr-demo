@@ -11,6 +11,7 @@ SiliconFlow OCR 在线测试 Demo — Streamlit 版
 import base64
 import os
 import time
+import shutil
 from datetime import datetime
 
 import streamlit as st
@@ -78,6 +79,8 @@ if "restoration_params" not in st.session_state:
     }
 if "show_comparison" not in st.session_state:
     st.session_state.show_comparison = False
+if "selected_sample" not in st.session_state:
+    st.session_state.selected_sample = None
 
 
 import re
@@ -300,11 +303,31 @@ with col1:
             f.write(uploaded_file.getvalue())
         st.image(temp_path, width="stretch")
     else:
-        temp_path = DEFAULT_IMAGE
+        temp_path = st.session_state.get("selected_sample") or DEFAULT_IMAGE
+        caption = "测试样本" if st.session_state.get("selected_sample") else "默认测试图片（干部任免审批表）"
         if os.path.exists(temp_path):
-            st.image(temp_path, width="stretch", caption="默认测试图片（干部任免审批表）")
+            st.image(temp_path, width="stretch", caption=caption)
         else:
-            st.info("📤 请上传图片进行识别")
+            st.info("\U0001F4E4 请上传图片进行识别")
+
+    # 测试样本缩略图
+    sample_dir = os.path.join(os.path.dirname(__file__), "_sample")
+    sample_images = sorted([
+        f for f in os.listdir(sample_dir)
+        if f.lower().endswith(('.jpg', '.jpeg', '.png'))
+    ])
+    if sample_images:
+        st.markdown("\U0001F4F8 测试样本")
+        cols = st.columns(len(sample_images))
+        for i, fname in enumerate(sample_images):
+            with cols[i]:
+                fpath = os.path.join(sample_dir, fname)
+                st.image(fpath, use_container_width=True)
+                if st.button(fname, key=f"sample_{i}", use_container_width=True):
+                    os.makedirs("_temp", exist_ok=True)
+                    shutil.copy(fpath, os.path.join("_temp", "_selected_sample.jpg"))
+                    st.session_state.selected_sample = fpath
+                    st.rerun()
 
     # ── 图像修复预处理 ──
     st.divider()
