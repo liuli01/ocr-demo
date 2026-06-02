@@ -28,6 +28,8 @@ from .utils import (
     restore_image_with_degradation_awareness,
     analyze_texture_simple,
     generate_synthetic_sample,
+    ensure_image_range,
+    safe_image_display,
 )
 
 __all__ = [
@@ -51,4 +53,6 @@ __all__ = [
     "estimate_snr",
     "adaptive_wiener_balance",
     "generate_synthetic_sample",
+    "ensure_image_range",
+    "safe_image_display",
 ]

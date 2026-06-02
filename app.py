@@ -15,6 +15,7 @@ import shutil
 from datetime import datetime
 
 import streamlit as st
+from PIL import Image
 from openai import OpenAI
 
 # === 图像修复预处理模块 ===
@@ -318,14 +319,14 @@ with col1:
     ])
     if sample_images:
         st.markdown("\U0001F4F8 测试样本")
-        cols = st.columns(len(sample_images))
+        cols = st.columns(2)
         for i, fname in enumerate(sample_images):
-            with cols[i]:
+            with cols[i % 2]:
                 fpath = os.path.join(sample_dir, fname)
-                st.image(fpath, use_container_width=True)
-                if st.button(fname, key=f"sample_{i}", use_container_width=True):
+                pil_img = Image.open(fpath)
+                st.image(pil_img, width=180)
+                if st.button(fname.replace(".jpg", ""), key=f"sample_{i}", use_container_width=True):
                     os.makedirs("_temp", exist_ok=True)
-                    shutil.copy(fpath, os.path.join("_temp", "_selected_sample.jpg"))
                     st.session_state.selected_sample = fpath
                     st.rerun()
 
