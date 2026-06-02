@@ -14,6 +14,8 @@ from .filters import (
     motion_blur_psf,
     gaussian_psf,
     disk_psf,
+    estimate_snr,
+    adaptive_wiener_balance,
 )
 from .utils import (
     detect_degradation_type,
@@ -25,7 +27,6 @@ from .utils import (
     adaptive_deblurring,
     restore_image_with_degradation_awareness,
     analyze_texture_simple,
-    estimate_snr,
     generate_synthetic_sample,
 )
 
@@ -48,5 +49,6 @@ __all__ = [
     "restore_image_with_degradation_awareness",
     "analyze_texture_simple",
     "estimate_snr",
+    "adaptive_wiener_balance",
     "generate_synthetic_sample",
 ]
