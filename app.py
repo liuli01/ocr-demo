@@ -16,6 +16,15 @@ from datetime import datetime
 import streamlit as st
 from openai import OpenAI
 
+# === 图像修复预处理模块 ===
+from modules.restoration import (
+    restore_image_with_degradation_awareness,
+    detect_degradation_type,
+    ensure_image_range,
+)
+import cv2
+import numpy as np
+
 # === 常量 ===
 try:
     API_KEY = st.secrets.get("API_KEY") or os.getenv("SILICONFLOW_API_KEY") or "sk-yvfxmydciruabzrpxmnaptmrvkgitkjhjjgroibaudfprhrw"
@@ -51,6 +60,24 @@ if "base_url" not in st.session_state:
     st.session_state.base_url = DEFAULT_BASE_URL
 if "custom_model" not in st.session_state:
     st.session_state.custom_model = ""
+
+# 预处理状态
+if "restoration_enabled" not in st.session_state:
+    st.session_state.restoration_enabled = False
+if "restored_image_path" not in st.session_state:
+    st.session_state.restored_image_path = None
+if "degradation_info" not in st.session_state:
+    st.session_state.degradation_info = None
+if "restoration_params" not in st.session_state:
+    st.session_state.restoration_params = {
+        "median_kernel": 3,
+        "psf_size": 21,
+        "wiener_balance": 0.01,
+        "tv_weight": 0.02,
+        "sharpening": 0.5,
+    }
+if "show_comparison" not in st.session_state:
+    st.session_state.show_comparison = False
 
 
 import re
@@ -259,7 +286,7 @@ def ocr_recognize(image_path: str, model_id: str, prompt: str,
 st.set_page_config(page_title="SiliconFlow OCR 测试台", layout="wide")
 st.title("SiliconFlow OCR 在线测试台")
 
-col1, col2 = st.columns([1, 1.8])
+col1, col2, col3 = st.columns([1.2, 1.2, 2])
 
 with col1:
     st.subheader("📤 输入图片")
@@ -278,6 +305,79 @@ with col1:
             st.image(temp_path, width="stretch", caption="默认测试图片（干部任免审批表）")
         else:
             st.info("📤 请上传图片进行识别")
+
+    # ── 图像修复预处理 ──
+    st.divider()
+    st.subheader("🔧 图像预处理")
+
+    enable_restoration = st.checkbox("启用修复预处理",
+                                      value=st.session_state.restoration_enabled,
+                                      help="开启后，图片先经修复算法处理再送入 OCR")
+
+    if enable_restoration:
+        st.session_state.restoration_enabled = True
+
+        if st.button("🔍 自动检测退化", use_container_width=True):
+            if os.path.exists(temp_path):
+                img_bgr = cv2.imread(temp_path)
+                if img_bgr is not None:
+                    img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB).astype(np.float64) / 255.0
+                    info = detect_degradation_type(img_rgb)
+                    st.session_state.degradation_info = info
+                    st.session_state.show_comparison = False
+                    st.rerun()
+
+        if st.session_state.degradation_info:
+            info = st.session_state.degradation_info
+            quality = info["overall_quality"]
+            color = {"good": "green", "fair": "orange", "poor": "red"}
+            st.markdown(f"**质量评分:** :{color.get(quality, 'gray')}[{quality.upper()}]")
+            st.markdown(f"- 噪声: {info['noise_type']} (程度: {info['noise_level']:.2f})")
+            if info.get("is_blurry"):
+                st.markdown(f"- 模糊: {info['blur_type']} (程度: {info['blur_severity']:.2f})")
+            if info.get("has_sp"):
+                st.markdown(f"- 椒盐噪声: {info['total_ratio']:.4f}")
+            if info.get("recommendations"):
+                st.markdown(f"- 建议: {', '.join(info['recommendations'])}")
+
+        with st.expander("⚙️ 手动参数调节", expanded=False):
+            params = st.session_state.restoration_params
+            params["median_kernel"] = st.slider("中值滤波核大小", 3, 11, params["median_kernel"], 2)
+            params["psf_size"] = st.slider("PSF 核大小", 11, 51, params["psf_size"], 2)
+            params["wiener_balance"] = st.slider("维纳平衡参数", 0.001, 0.1, params["wiener_balance"], 0.001,
+                                                  format="%.3f")
+            params["tv_weight"] = st.slider("TV 正则化权重", 0.0, 0.1, params["tv_weight"], 0.001, format="%.3f")
+            params["sharpening"] = st.slider("锐化强度", 0.0, 1.0, params["sharpening"], 0.05)
+
+        if st.button("🔄 应用修复", type="primary", use_container_width=True):
+            if os.path.exists(temp_path):
+                with st.spinner("正在执行图像修复..."):
+                    try:
+                        img_bgr = cv2.imread(temp_path)
+                        if img_bgr is not None:
+                            img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB).astype(np.float64) / 255.0
+                            params = st.session_state.restoration_params
+                            restored = restore_image_with_degradation_awareness(img_rgb, params)
+                            restored_bgr = cv2.cvtColor(
+                                (restored * 255).astype(np.uint8), cv2.COLOR_RGB2BGR
+                            )
+                            restored_path = os.path.join("_temp", "_restored_temp.jpg")
+                            cv2.imwrite(restored_path, restored_bgr)
+                            st.session_state.restored_image_path = restored_path
+                            st.session_state.show_comparison = True
+                            st.rerun()
+                    except Exception as e:
+                        st.error(f"修复失败: {e}")
+
+        if st.session_state.restored_image_path:
+            if st.button("↩️ 使用原图", use_container_width=True):
+                st.session_state.restored_image_path = None
+                st.session_state.show_comparison = False
+                st.rerun()
+    else:
+        st.session_state.restoration_enabled = False
+        st.session_state.restored_image_path = None
+        st.session_state.show_comparison = False
 
     st.divider()
     st.subheader("⚙️ 参数设置")
@@ -356,15 +456,46 @@ with col1:
     recognize_btn = st.button("🚀 开始识别", type="primary", width="stretch")
 
 with col2:
+    st.subheader("🖼️ 图像预览")
+
+    if st.session_state.show_comparison and st.session_state.restored_image_path:
+        tab_before, tab_after = st.tabs(["📷 原图", "✨ 修复后"])
+        with tab_before:
+            if os.path.exists(temp_path):
+                st.image(temp_path, width="stretch", caption="修复前")
+        with tab_after:
+            if os.path.exists(st.session_state.restored_image_path):
+                st.image(st.session_state.restored_image_path, width="stretch", caption="修复后")
+                if st.session_state.degradation_info:
+                    info = st.session_state.degradation_info
+                    st.caption(
+                        f"质量: {info['overall_quality'].upper()} | "
+                        f"噪声: {info['noise_type']} | "
+                        f"模糊: {'是' if info.get('is_blurry') else '否'}"
+                    )
+    else:
+        if os.path.exists(temp_path):
+            st.image(temp_path, width="stretch",
+                     caption="默认测试图片（干部任免审批表）" if temp_path == DEFAULT_IMAGE else "上传图片")
+        else:
+            st.info("📤 请上传图片")
+
+with col3:
     st.subheader("📄 识别结果")
 
+    # 选择输入图片路径（原图 or 修复后）
+    final_image_path = temp_path
+    if st.session_state.restoration_enabled and st.session_state.restored_image_path:
+        if os.path.exists(st.session_state.restored_image_path):
+            final_image_path = st.session_state.restored_image_path
+
     if recognize_btn:
-        if not os.path.exists(temp_path):
+        if not os.path.exists(final_image_path):
             st.error("请先上传图片")
         else:
             with st.spinner(f"正在识别...（模型：{model_label}）"):
                 try:
-                    data = ocr_recognize(temp_path, model_id, prompt, temperature, max_tokens,
+                    data = ocr_recognize(final_image_path, model_id, prompt, temperature, max_tokens,
                                          top_p, top_k, frequency_penalty,
                                          enable_thinking,
                                          base_url=st.session_state.base_url)
@@ -394,6 +525,18 @@ with col2:
                     with st.expander("📝 查看原始输出"):
                         st.code(data["result"], language="text")
 
+                    # 记录预处理信息到历史
+                    data["preprocessing"] = {
+                        "enabled": st.session_state.restoration_enabled,
+                        "degradation": {
+                            "quality": st.session_state.degradation_info["overall_quality"],
+                            "noise_type": st.session_state.degradation_info["noise_type"],
+                            "is_blurry": st.session_state.degradation_info.get("is_blurry", False),
+                        } if st.session_state.degradation_info else None,
+                        "params": st.session_state.restoration_params.copy()
+                        if st.session_state.restoration_enabled else None,
+                    }
+
                     # 记录历史
                     st.session_state.history.insert(0, data)
 
@@ -421,6 +564,11 @@ if st.session_state.history:
                         f"**Token**: {record['total_tokens']} "
                         f"(prompt={record['prompt_tokens']}, "
                         f"completion={record['completion_tokens']})")
+            if record.get("preprocessing", {}).get("enabled"):
+                pp = record["preprocessing"]
+                deg = pp.get("degradation") or {}
+                st.markdown(f"**预处理**: 启用 | 质量: {deg.get('quality', '?')} | "
+                            f"{'模糊' if deg.get('is_blurry') else '清晰'}")
             t1, t2 = st.tabs(["📊 表格", "📝 原始"])
             with t1:
                 st.markdown(record.get("result_cleaned", record["result"]))
