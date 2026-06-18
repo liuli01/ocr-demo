@@ -870,38 +870,95 @@ with tab_enhance:
 
             # 执行增强预览
             if preview_btn and os.path.exists(temp_path):
-                with st.spinner("正在执行文档增强..."):
-                    try:
-                        img_bgr = _cv_imread(temp_path)
-                        if img_bgr is not None:
-                            img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB).astype(np.float64) / 255.0
-                            enhanced = document_enhance_pipeline(
-                                img_rgb,
-                                whitening=whitening,
-                                shadow_removal=shadow,
-                                clahe=clahe_val,
-                                sharpening=sharp,
-                                moire=moire,
-                                binarize=do_binarize,
-                            )
-                            enhanced_bgr = cv2.cvtColor(
-                                (enhanced * 255).astype(np.uint8), cv2.COLOR_RGB2BGR
-                            )
-                            enhanced_path = os.path.join("_temp", "_doc_enhanced_temp.jpg")
-                            cv2.imwrite(enhanced_path, enhanced_bgr)
-                            st.session_state.doc_enhance_result = {
-                                "path": enhanced_path,
-                                "params": {
-                                    "whitening": whitening,
-                                    "shadow": shadow,
-                                    "clahe": clahe_val,
-                                    "sharp": sharp,
-                                    "moire": moire,
-                                    "binarize": do_binarize,
-                                }
-                            }
-                    except Exception as e:
-                        st.error(f"文档增强失败: {e}")
+                status_text = st.empty()
+                status_text.info("⏳ 正在读取图片...")
+                t0 = time.time()
+                try:
+                    img_bgr = _cv_imread(temp_path)
+                    if img_bgr is not None:
+                        h_raw, w_raw = img_bgr.shape[:2]
+                        # 大图自动缩放到 2000px 以内加速处理
+                        MAX_ENHANCE = 2000
+                        scale = 1.0
+                        if max(h_raw, w_raw) > MAX_ENHANCE:
+                            scale = MAX_ENHANCE / max(h_raw, w_raw)
+                            nw, nh = int(w_raw * scale), int(h_raw * scale)
+                            img_bgr = cv2.resize(img_bgr, (nw, nh), interpolation=cv2.INTER_AREA)
+                            st.caption(f"原图 {w_raw}x{h_raw} 较大，已缩放至 {nw}x{nh} 加速")
+
+                        img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB).astype(np.float64) / 255.0
+                        t1 = time.time()
+                        steps_log = []
+
+                        # 分步执行，每步加日志
+                        enhanced = img_rgb.copy()
+
+                        if moire > 0:
+                            status_text.info("〰️ 步骤 1/6: 去摩尔纹 (FFT频域滤波)...")
+                            from modules.document_enhancement import moire_removal_fft
+                            enhanced = moire_removal_fft(enhanced, moire)
+                            steps_log.append(f"去摩尔纹({moire:.0%})")
+
+                        if shadow > 0:
+                            status_text.info("🌑 步骤 2/6: 阴影去除 (光照校正)...")
+                            from modules.document_enhancement import remove_shadow
+                            enhanced = remove_shadow(enhanced, shadow)
+                            steps_log.append(f"阴影去除({shadow:.0%})")
+
+                        if whitening > 0:
+                            status_text.info("☀️ 步骤 3/6: 背景漂白 (形态学背景估计)...")
+                            from modules.document_enhancement import background_whitening
+                            enhanced = background_whitening(enhanced, whitening, kernel_size=61)
+                            steps_log.append(f"背景漂白({whitening:.0%})")
+
+                        if clahe_val > 0:
+                            status_text.info(f"🎨 步骤 4/6: CLAHE 对比度增强 (clip={clahe_val:.1f})...")
+                            from modules.document_enhancement import clahe_enhance
+                            enhanced = clahe_enhance(enhanced, clip_limit=clahe_val, tile_size=8)
+                            steps_log.append(f"CLAHE({clahe_val:.1f})")
+
+                        if sharp > 0:
+                            status_text.info(f"✏️ 步骤 5/6: 文字锐化 (Unsharp Mask)...")
+                            from modules.document_enhancement import text_sharpening
+                            enhanced = text_sharpening(enhanced, sharp)
+                            steps_log.append(f"锐化({sharp:.0%})")
+
+                        if do_binarize:
+                            status_text.info("⬛ 步骤 6/6: 二值化 (Sauvola自适应阈值)...")
+                            from modules.document_enhancement import text_enhance_binary
+                            enhanced = text_enhance_binary(enhanced, method='sauvola', window_size=31)
+                            steps_log.append("二值化")
+                        elif not any([moire, shadow, whitening, clahe_val, sharp]):
+                            status_text.warning("⚠️ 所有增强参数均为 0，请调节参数")
+
+                        t2 = time.time()
+                        status_text.success(f"✅ 完成: {' → '.join(steps_log)} (耗时 {t2-t1:.1f}s)")
+                        log_lines = "\n".join(f"  {i+1}. {s}" for i, s in enumerate(steps_log))
+                        st.caption(f"处理步骤:\n{log_lines}")
+
+                        enhanced_bgr = cv2.cvtColor(
+                            (enhanced * 255).astype(np.uint8), cv2.COLOR_RGB2BGR
+                        )
+                        enhanced_path = os.path.join("_temp", "_doc_enhanced_temp.jpg")
+                        cv2.imwrite(enhanced_path, enhanced_bgr)
+                        status_text.success(f"✅ 增强完成 (处理 {t2-t1:.1f}s, 总计 {t2-t0:.1f}s)")
+
+                        st.session_state.doc_enhance_result = {
+                            "path": enhanced_path,
+                            "elapsed": f"{t2-t1:.1f}s",
+                            "total": f"{t2-t0:.1f}s",
+                            "params": {
+                                "whitening": whitening,
+                                "shadow": shadow,
+                                "clahe": clahe_val,
+                                "sharp": sharp,
+                                "moire": moire,
+                                "binarize": do_binarize,
+                            },
+                        }
+                except Exception as e:
+                    st.error(f"文档增强失败: {e}")
+                    status_text.error(f"❌ {e}")
 
             # 显示对比
             doc_res = st.session_state.doc_enhance_result
@@ -926,7 +983,8 @@ with tab_enhance:
                         tags.append(f"去摩尔纹 {p['moire']:.0%}")
                     if p.get("binarize"):
                         tags.append("二值化")
-                    st.caption(" | ".join(tags))
+                    timing = doc_res.get("elapsed", "")
+                    st.caption(" | ".join(tags) + f"  ⏱ {timing}" if tags else f"⏱ {timing}")
             else:
                 st.info("👈 调节参数后点击「预览增强效果」")
     else:
