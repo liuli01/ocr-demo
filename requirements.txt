@@ -9,6 +9,6 @@ PyWavelets>=1.4.0
 matplotlib>=3.7.0
 requests>=2.28.0
 
-# PP-OCRv6 本地 OCR
-paddlepaddle>=3.0.0
+# PP-OCRv6 本地 OCR（Windows 需 PaddlePaddle 3.2.x，3.3.x 有 oneDNN bug）
+paddlepaddle>=3.2.0,<3.3.0
 paddleocr>=2.9.0

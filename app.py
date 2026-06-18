@@ -10,6 +10,8 @@ SiliconFlow OCR 在线测试 Demo — Streamlit 版
 
 import base64
 import os
+# PP-OCRv6 本地模型跳过模型源检测
+os.environ.setdefault('PADDLEX_DISABLE_MODEL_SOURCE_CHECK', 'True')
 import time
 import shutil
 import zipfile
@@ -380,7 +382,7 @@ def _ocr_paddle_local(image_path: str) -> dict:
     """使用 PP-OCRv6 本地识别图片，返回与 ocr_recognize 兼容的 dict"""
     start = time.time()
     ocr = _get_paddle_ocr()
-    result = ocr.ocr(image_path, cls=True)
+    result = ocr.predict(image_path, use_textline_orientation=True)
     elapsed = time.time() - start
 
     if not result or not result[0]:
@@ -396,25 +398,57 @@ def _ocr_paddle_local(image_path: str) -> dict:
             "time": datetime.now().strftime("%H:%M:%S"),
         }
 
-    # 解析结果：[[bbox, (text, confidence)], ...]
-    lines = []
-    for line in result[0]:
-        bbox, (text, conf) = line
-        lines.append((bbox, text, conf))
+    # PaddleOCR 3.x 返回 OCRResult 对象（类 dict 结构）
+    page_result = result[0]
+    rec_texts = page_result.get('rec_texts', [])
+    rec_scores = page_result.get('rec_scores', [])
+    rec_boxes = page_result.get('rec_boxes', [])
 
-    # Y/X 坐标排序（自上而下，从左到右）
-    lines.sort(key=lambda x: (round(x[0][0][1]), x[0][0][0]))
+    if not rec_texts:
+        raw_output = "(未识别到文字)"
+        return {
+            "result": raw_output,
+            "result_cleaned": raw_output,
+            "elapsed": f"{elapsed:.1f}s",
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+            "model": "PP-OCRv6 Medium (🏠 本地)",
+            "time": datetime.now().strftime("%H:%M:%S"),
+        }
+
+    # 组合 bbox + text + score，按 Y 坐标排序
+    lines = []
+    for i, text in enumerate(rec_texts):
+        bbox = rec_boxes[i] if i < len(rec_boxes) else None
+        conf = rec_scores[i] if i < len(rec_scores) else 0.0
+        # bbox 格式（numpy.ndarray）: [x1, y1, x2, y2]（四点坐标压平）
+        if bbox is not None and len(bbox) >= 4:
+            y_center = (bbox[1] + bbox[3]) / 2  # (y1 + y2) / 2
+            x_start = bbox[0]
+        else:
+            y_center = 0
+            x_start = 0
+        lines.append((y_center, x_start, bbox, text, conf))
+
+    # Y 坐标排序（自上而下），同一行按 X 排序
+    lines.sort(key=lambda x: (round(x[0]), x[1]))
 
     # 原始输出：每行带坐标和置信度
     raw_lines = []
-    for bbox, text, conf in lines:
-        coords = ",".join(f"({int(p[0])},{int(p[1])})" for p in bbox)
-        raw_lines.append(f"[{coords}] \"{text}\" (conf={conf:.2f})")
+    for _, _, bbox, text, conf in lines:
+        if bbox is not None and len(bbox) >= 4:
+            raw_lines.append(
+                f"({int(bbox[0])},{int(bbox[1])})-({int(bbox[2])},{int(bbox[3])}) "
+                f"\"{text}\" (conf={conf:.2f})"
+            )
+        else:
+            raw_lines.append(f"\"{text}\" (conf={conf:.2f})")
     raw_output = "\n".join(raw_lines)
 
     # 管道表输出：仅文本 + 置信度
     pipe_lines = ["| 内容 | 置信度 |", "|---|---|"]
-    for _, text, conf in lines:
+    for _, _, _, text, conf in lines:
         pipe_lines.append(f"| {text} | {conf:.2f} |")
 
     return {
