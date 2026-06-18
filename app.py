@@ -767,6 +767,11 @@ with tab_enhance:
                 if os.path.exists(temp_path):
                     img_bgr = _cv_imread(temp_path)
                     if img_bgr is not None:
+                        h_raw, w_raw = img_bgr.shape[:2]
+                        if max(h_raw, w_raw) > 2000:
+                            scale = 2000 / max(h_raw, w_raw)
+                            img_bgr = cv2.resize(img_bgr, (int(w_raw*scale), int(h_raw*scale)),
+                                                  interpolation=cv2.INTER_AREA)
                         img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB).astype(np.float64) / 255.0
                         info = detect_degradation_type(img_rgb)
                         st.session_state.degradation_info = info
@@ -799,9 +804,18 @@ with tab_enhance:
             if st.button("🔄 应用修复", type="primary", use_container_width=True):
                 if os.path.exists(temp_path):
                     with st.spinner("正在执行图像修复..."):
+                        t0 = time.time()
                         try:
                             img_bgr = _cv_imread(temp_path)
                             if img_bgr is not None:
+                                h_raw, w_raw = img_bgr.shape[:2]
+                                # 大图自动缩放加速
+                                MAX_RESTORE = 2000
+                                if max(h_raw, w_raw) > MAX_RESTORE:
+                                    scale = MAX_RESTORE / max(h_raw, w_raw)
+                                    nw, nh = int(w_raw * scale), int(h_raw * scale)
+                                    img_bgr = cv2.resize(img_bgr, (nw, nh), interpolation=cv2.INTER_AREA)
+
                                 img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB).astype(np.float64) / 255.0
                                 params = st.session_state.restoration_params
                                 restored = restore_image_with_degradation_awareness(img_rgb, params)
