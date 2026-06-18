@@ -29,6 +29,16 @@ from modules.restoration import (
     detect_degradation_type,
     ensure_image_range,
 )
+# === 文档增强模块（扫描王风格） ===
+from modules.document_enhancement import (
+    document_enhance_pipeline,
+    background_whitening,
+    remove_shadow,
+    clahe_enhance,
+    text_sharpening,
+    text_enhance_binary,
+    moire_removal_fft,
+)
 import cv2
 import numpy as np
 import functools
@@ -94,6 +104,8 @@ if "restoration_params" not in st.session_state:
     }
 if "show_comparison" not in st.session_state:
     st.session_state.show_comparison = False
+if "doc_enhance_enabled" not in st.session_state:
+    st.session_state.doc_enhance_enabled = False
 
 import re
 
@@ -811,6 +823,64 @@ with tab_enhance:
         st.session_state.restoration_enabled = False
         st.session_state.restored_image_path = None
         st.session_state.show_comparison = False
+
+    # ── 文档增强（扫描王风格） ──
+    st.divider()
+    st.subheader("📄 文档增强 — 扫描王风格")
+
+    enable_doc_enhance = st.checkbox("启用文档增强",
+                                      value=st.session_state.get("doc_enhance_enabled", False),
+                                      help="背景漂白、阴影去除、对比度增强等，专为文档OCR优化")
+
+    if enable_doc_enhance:
+        st.session_state.doc_enhance_enabled = True
+
+        with st.expander("⚙️ 文档增强参数", expanded=True):
+            col_de1, col_de2 = st.columns(2)
+            with col_de1:
+                whitening = st.slider("☀️ 背景漂白", 0.0, 1.0, 0.7, 0.05,
+                                     help="消除背景黄斑/阴影，均匀化文档背景")
+                shadow = st.slider("🌑 阴影去除", 0.0, 1.0, 0.5, 0.05,
+                                   help="去除大幅阴影，适合折叠/弯曲扫描件")
+                clahe_val = st.slider("🎨 CLAHE 对比度", 0.0, 5.0, 2.0, 0.1,
+                                      help="限制对比度自适应直方图均衡，增强文字局部对比度")
+            with col_de2:
+                sharp = st.slider("✏️ 文字锐化", 0.0, 1.0, 0.4, 0.05,
+                                  help="Unsharp Mask 文字边缘增强")
+                moire = st.slider("〰️ 去摩尔纹", 0.0, 1.0, 0.0, 0.05,
+                                  help="FFT 频域滤波去除扫描摩尔纹")
+                do_binarize = st.checkbox("⬛ 二值化（黑白）",
+                                          value=False,
+                                          help="Sauvola 自适应二值化，文字黑白色")
+
+        if st.button("🔄 应用文档增强", type="primary", use_container_width=True):
+            if os.path.exists(temp_path):
+                with st.spinner("正在执行文档增强..."):
+                    try:
+                        img_bgr = _cv_imread(temp_path)
+                        if img_bgr is not None:
+                            img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB).astype(np.float64) / 255.0
+                            enhanced = document_enhance_pipeline(
+                                img_rgb,
+                                whitening=whitening,
+                                shadow_removal=shadow,
+                                clahe=clahe_val,
+                                sharpening=sharp,
+                                moire=moire,
+                                binarize=do_binarize,
+                            )
+                            enhanced_bgr = cv2.cvtColor(
+                                (enhanced * 255).astype(np.uint8), cv2.COLOR_RGB2BGR
+                            )
+                            enhanced_path = os.path.join("_temp", "_doc_enhanced_temp.jpg")
+                            cv2.imwrite(enhanced_path, enhanced_bgr)
+                            st.session_state.restored_image_path = enhanced_path
+                            st.session_state.show_comparison = True
+                            st.rerun()
+                    except Exception as e:
+                        st.error(f"文档增强失败: {e}")
+    else:
+        st.session_state.doc_enhance_enabled = False
 
 # === 历史记录 ===
 st.divider()
