@@ -382,7 +382,21 @@ def _ocr_paddle_local(image_path: str) -> dict:
     """使用 PP-OCRv6 本地识别图片，返回与 ocr_recognize 兼容的 dict"""
     start = time.time()
     ocr = _get_paddle_ocr()
-    result = ocr.predict(image_path, use_textline_orientation=True)
+
+    # 大图自动缩放到合理尺寸（PaddleOCR 内部 max_side_limit=4000）
+    img_bgr = _cv_imread(image_path)
+    if img_bgr is not None:
+        h, w = img_bgr.shape[:2]
+        MAX_SIDE = 2000
+        if max(h, w) > MAX_SIDE:
+            scale = MAX_SIDE / max(h, w)
+            new_w, new_h = int(w * scale), int(h * scale)
+            img_bgr = cv2.resize(img_bgr, (new_w, new_h), interpolation=cv2.INTER_AREA)
+        input_data = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+    else:
+        input_data = image_path  # fallback: 传路径
+
+    result = ocr.predict(input_data, use_textline_orientation=True)
     elapsed = time.time() - start
 
     if not result or not result[0]:
