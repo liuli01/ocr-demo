@@ -106,6 +106,8 @@ if "show_comparison" not in st.session_state:
     st.session_state.show_comparison = False
 if "doc_enhance_enabled" not in st.session_state:
     st.session_state.doc_enhance_enabled = False
+if "doc_enhance_result" not in st.session_state:
+    st.session_state.doc_enhance_result = None  # {path, params} or None
 
 import re
 
@@ -835,26 +837,39 @@ with tab_enhance:
     if enable_doc_enhance:
         st.session_state.doc_enhance_enabled = True
 
-        with st.expander("⚙️ 文档增强参数", expanded=True):
-            col_de1, col_de2 = st.columns(2)
-            with col_de1:
+        # 文档增强参数区
+        col_de_params, col_de_preview = st.columns([1, 1.5])
+
+        with col_de_params:
+            with st.expander("⚙️ 增强参数", expanded=True):
                 whitening = st.slider("☀️ 背景漂白", 0.0, 1.0, 0.7, 0.05,
-                                     help="消除背景黄斑/阴影，均匀化文档背景")
+                                     help="消除黄斑/阴影，均匀化背景")
                 shadow = st.slider("🌑 阴影去除", 0.0, 1.0, 0.5, 0.05,
-                                   help="去除大幅阴影，适合折叠/弯曲扫描件")
+                                   help="去除大幅阴影，适合弯曲扫描件")
                 clahe_val = st.slider("🎨 CLAHE 对比度", 0.0, 5.0, 2.0, 0.1,
-                                      help="限制对比度自适应直方图均衡，增强文字局部对比度")
-            with col_de2:
+                                      help="自适应局部对比度增强")
                 sharp = st.slider("✏️ 文字锐化", 0.0, 1.0, 0.4, 0.05,
                                   help="Unsharp Mask 文字边缘增强")
                 moire = st.slider("〰️ 去摩尔纹", 0.0, 1.0, 0.0, 0.05,
                                   help="FFT 频域滤波去除扫描摩尔纹")
                 do_binarize = st.checkbox("⬛ 二值化（黑白）",
                                           value=False,
-                                          help="Sauvola 自适应二值化，文字黑白色")
+                                          help="Sauvola 自适应二值化")
 
-        if st.button("🔄 应用文档增强", type="primary", use_container_width=True):
-            if os.path.exists(temp_path):
+            preview_btn = st.button("👁️ 预览增强效果", type="primary", use_container_width=True)
+
+            # 应用增强到 OCR
+            if st.session_state.doc_enhance_result:
+                if st.button("📋 应用到 OCR 识别", use_container_width=True,
+                             help="将增强后的图片设为 OCR 识别用图"):
+                    st.session_state.restored_image_path = st.session_state.doc_enhance_result["path"]
+                    st.rerun()
+
+        with col_de_preview:
+            st.caption("增强前后对比")
+
+            # 执行增强预览
+            if preview_btn and os.path.exists(temp_path):
                 with st.spinner("正在执行文档增强..."):
                     try:
                         img_bgr = _cv_imread(temp_path)
@@ -874,11 +889,46 @@ with tab_enhance:
                             )
                             enhanced_path = os.path.join("_temp", "_doc_enhanced_temp.jpg")
                             cv2.imwrite(enhanced_path, enhanced_bgr)
-                            st.session_state.restored_image_path = enhanced_path
-                            st.session_state.show_comparison = True
-                            st.rerun()
+                            st.session_state.doc_enhance_result = {
+                                "path": enhanced_path,
+                                "params": {
+                                    "whitening": whitening,
+                                    "shadow": shadow,
+                                    "clahe": clahe_val,
+                                    "sharp": sharp,
+                                    "moire": moire,
+                                    "binarize": do_binarize,
+                                }
+                            }
                     except Exception as e:
                         st.error(f"文档增强失败: {e}")
+
+            # 显示对比
+            doc_res = st.session_state.doc_enhance_result
+            if doc_res and os.path.exists(doc_res["path"]):
+                tab_before, tab_after = st.tabs(["📷 原图", "✨ 增强后"])
+                with tab_before:
+                    if os.path.exists(temp_path):
+                        st.image(temp_path, width="stretch")
+                with tab_after:
+                    st.image(doc_res["path"], width="stretch")
+                    p = doc_res.get("params", {})
+                    tags = []
+                    if p.get("whitening", 0) > 0:
+                        tags.append(f"漂白 {p['whitening']:.0%}")
+                    if p.get("shadow", 0) > 0:
+                        tags.append(f"阴影 {p['shadow']:.0%}")
+                    if p.get("clahe", 0) > 0:
+                        tags.append(f"CLAHE {p['clahe']:.1f}")
+                    if p.get("sharp", 0) > 0:
+                        tags.append(f"锐化 {p['sharp']:.0%}")
+                    if p.get("moire", 0) > 0:
+                        tags.append(f"去摩尔纹 {p['moire']:.0%}")
+                    if p.get("binarize"):
+                        tags.append("二值化")
+                    st.caption(" | ".join(tags))
+            else:
+                st.info("👈 调节参数后点击「预览增强效果」")
     else:
         st.session_state.doc_enhance_enabled = False
 
