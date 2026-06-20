@@ -3,10 +3,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      # 中国用户加速：取消下面注释使用清华镜像
-      # args:
-      #   PIP_INDEX_URL: https://pypi.tuna.tsinghua.edu.cn/simple
-      #   APT_MIRROR: mirrors.tuna.tsinghua.edu.cn
+      args:
+        PIP_INDEX_URL: https://pypi.tuna.tsinghua.edu.cn/simple
+        APT_MIRROR: mirrors.tuna.tsinghua.edu.cn
     container_name: siliconflow-ocr-demo
     ports:
       - "8501:8501"

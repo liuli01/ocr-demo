@@ -1,0 +1,19 @@
+services:
+  ocr-demo:
+    image: ${REGISTRY_URL:?请设置 REGISTRY_URL}/${NAMESPACE:-woodpeacker}/ocr-demo:${TAG:-latest}
+    container_name: ocr-demo
+    ports:
+      - "8501:8501"
+    environment:
+      - PADDLEX_DISABLE_MODEL_SOURCE_CHECK=True
+      - STREAMLIT_SERVER_MAX_UPLOAD_SIZE=50
+    volumes:
+      - ocr-demo-temp:/app/_temp
+      - paddleocr-models:/root/.paddleocr
+      - paddlex-models:/root/.paddlex
+    restart: unless-stopped
+
+volumes:
+  ocr-demo-temp:
+  paddleocr-models:
+  paddlex-models:

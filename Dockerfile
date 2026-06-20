@@ -4,12 +4,9 @@ FROM python:3.12-slim
 LABEL maintainer="OCR Demo"
 LABEL description="SiliconFlow OCR 测试台 + PP-OCRv6 本地识别"
 
-# 镜像加速（中国用户可指定国内源）
-#   docker compose build \
-#     --build-arg PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
-#     --build-arg APT_MIRROR=mirrors.tuna.tsinghua.edu.cn
-ARG PIP_INDEX_URL=https://pypi.org/simple
-ARG APT_MIRROR=deb.debian.org
+# 镜像加速（中国用户指定国内源，默认清华源）
+ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+ARG APT_MIRROR=mirrors.tuna.tsinghua.edu.cn
 
 # 避免交互式提示
 ENV DEBIAN_FRONTEND=noninteractive

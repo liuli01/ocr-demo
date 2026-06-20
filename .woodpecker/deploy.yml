@@ -1,0 +1,65 @@
+depends_on:
+  - build
+
+when:
+  - event: push
+    branch: main
+  - event: tag
+    tag: v*
+
+steps:
+  - name: deploy
+    image: docker:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    secrets:
+      - REGISTRY_USER
+      - REGISTRY_PASSWORD
+    environment:
+      - REGISTRY_URL=registry.cn-beijing.aliyuncs.com
+      - NAMESPACE=woodpeacker
+    commands:
+      # 登录仓库
+      - echo "$REGISTRY_PASSWORD" | docker login $REGISTRY_URL -u "$REGISTRY_USER" --password-stdin
+      # 拉取最新镜像
+      - docker compose -f docker-compose.prod.yml pull
+      # 重启服务
+      - docker compose -f docker-compose.prod.yml up -d
+      # 清理旧镜像
+      - docker image prune -f
+      # 健康检查（最多等 60s）
+      - echo "等待服务启动..."
+      - |
+        for i in $(seq 1 12); do
+          wget -qO- http://localhost:8501 && echo "✅ 部署成功" && exit 0
+          sleep 5
+        done
+        echo "⚠️ 健康检查超时：docker logs ocr-demo" && exit 1
+
+  - name: notify
+    image: alpine:latest
+    secrets:
+      - NOTIFY_WEBHOOK
+    environment:
+      - DEPLOY_STATUS=success
+    commands:
+      - apk add --no-cache curl
+      - |
+        STATUS="success"
+        [ "$CI_PIPELINE_STATUS" = "failure" ] && STATUS="failure"
+        curl -s -X POST -H "Content-Type: application/json" \
+          -d "{
+            \"msg_type\": \"interactive\",
+            \"card\": {
+              \"header\": {
+                \"title\": {\"tag\": \"plain_text\", \"content\": \"ocr-demo ${STATUS}\"},
+                \"template\": \"${STATUS}\"
+              },
+              \"elements\": [
+                {\"tag\": \"div\", \"text\": {\"tag\": \"lark_md\", \"content\": \"**仓库**: $CI_REPO\n**分支**: $CI_COMMIT_BRANCH\n**提交**: ${CI_COMMIT_SHA:0:8}\n**版本**: ${CI_COMMIT_TAG:-latest}\"}}
+              ]
+            }
+          }" \
+          "$NOTIFY_WEBHOOK" || echo "通知发送失败（可忽略）"
+    when:
+      - status: [success, failure]

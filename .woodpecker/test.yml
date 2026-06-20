@@ -1,0 +1,22 @@
+when:
+  - event: push                         # 所有分支 push 都跑测试
+  - event: pull_request                 # PR 自动测试
+    branch: main
+
+steps:
+  - name: test
+    image: python:3.12-slim
+    environment:
+      - PYTHONUNBUFFERED=1
+    commands:
+      # 安装依赖
+      - pip install --no-cache-dir -r requirements.txt
+      # 验证关键依赖可导入
+      - python -c "
+import streamlit;
+import openai;
+import PIL;
+import cv2;
+import numpy;
+print(f'✅ 全部依赖导入成功 (streamlit {streamlit.__version__})')
+"
