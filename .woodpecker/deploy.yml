@@ -12,12 +12,16 @@ steps:
     image: docker:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - $HOME/.docker/config.json:/root/.docker/config.json:ro
+    secrets:
+      - registry_user
+      - registry_password
     environment:
       - REGISTRY_URL=registry.cn-beijing.aliyuncs.com
       - NAMESPACE=woodpeacker
     commands:
-      # 拉取最新镜像（复用宿主机 ACR 登录）
+      # 登录 ACR
+      - echo "$REGISTRY_PASSWORD" | docker login $REGISTRY_URL -u "$REGISTRY_USER" --password-stdin
+      # 拉取最新镜像
       - docker compose -f docker-compose.prod.yml pull
       # 重启服务
       - docker compose -f docker-compose.prod.yml up -d
