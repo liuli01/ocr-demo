@@ -16,9 +16,9 @@ steps:
       - registry_user
       - registry_password
     environment:
-      - REGISTRY_URL=registry.cn-beijing.aliyuncs.com
-      - NAMESPACE=woodpeacker
-      - DOCKER_BUILDKIT=1
+      REGISTRY_URL: registry.cn-beijing.aliyuncs.com
+      NAMESPACE: woodpeacker
+      DOCKER_BUILDKIT: 1
     commands:
       # 登录 ACR（凭据来自 Woodpecker Secret）
       - echo "$REGISTRY_PASSWORD" | docker login $REGISTRY_URL -u "$REGISTRY_USER" --password-stdin

@@ -16,8 +16,8 @@ steps:
       - registry_user
       - registry_password
     environment:
-      - REGISTRY_URL=registry.cn-beijing.aliyuncs.com
-      - NAMESPACE=woodpeacker
+      REGISTRY_URL: registry.cn-beijing.aliyuncs.com
+      NAMESPACE: woodpeacker
     commands:
       # 登录 ACR
       - echo "$REGISTRY_PASSWORD" | docker login $REGISTRY_URL -u "$REGISTRY_USER" --password-stdin
@@ -41,7 +41,7 @@ steps:
     secrets:
       - NOTIFY_WEBHOOK
     environment:
-      - DEPLOY_STATUS=success
+      DEPLOY_STATUS: success
     commands:
       - apk add --no-cache curl
       - |
