@@ -4,11 +4,19 @@ FROM python:3.12-slim
 LABEL maintainer="OCR Demo"
 LABEL description="SiliconFlow OCR 测试台 + PP-OCRv6 本地识别"
 
+# 镜像加速（中国用户可指定国内源）
+#   docker compose build \
+#     --build-arg PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
+#     --build-arg APT_MIRROR=mirrors.tuna.tsinghua.edu.cn
+ARG PIP_INDEX_URL=https://pypi.org/simple
+ARG APT_MIRROR=deb.debian.org
+
 # 避免交互式提示
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 ENV PIP_NO_CACHE_DIR=1
-ENV PIP_DEFAULT_TIMEOUT=120
+ENV PIP_DEFAULT_TIMEOUT=300
+ENV PIP_INDEX_URL=${PIP_INDEX_URL}
 
 # Streamlit 配置
 ENV STREAMLIT_SERVER_PORT=8501
@@ -18,8 +26,9 @@ ENV STREAMLIT_SERVER_MAX_UPLOAD_SIZE=50
 ENV PADDLEX_DISABLE_MODEL_SOURCE_CHECK=True
 
 # 安装系统依赖（OpenCV / PaddlePaddle 所需）
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgl1-mesa-glx \
+RUN sed -i "s/deb.debian.org/${APT_MIRROR}/g" /etc/apt/sources.list.d/debian.sources 2>/dev/null; \
+    apt-get update && apt-get install -y --no-install-recommends \
+    libgl1 \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
