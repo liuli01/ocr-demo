@@ -11,10 +11,11 @@ steps:
     image: docker:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-    secrets:
-      - registry_user
-      - registry_password
     environment:
+      REGISTRY_USER:
+        from_secret: registry_user
+      REGISTRY_PASSWORD:
+        from_secret: registry_password
       REGISTRY_URL: registry.cn-beijing.aliyuncs.com
       NAMESPACE: woodpeacker
       DOCKER_BUILDKIT: 1
