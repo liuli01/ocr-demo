@@ -1,0 +1,30 @@
+version: "3.9"
+
+services:
+  ocr-demo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: siliconflow-ocr-demo
+    ports:
+      - "8501:8501"
+    environment:
+      - PADDLEX_DISABLE_MODEL_SOURCE_CHECK=True
+      - STREAMLIT_SERVER_MAX_UPLOAD_SIZE=50
+    volumes:
+      # 挂载临时目录（可选，便于查看缓存）
+      - ./_temp:/app/_temp
+      # PaddleOCR 模型缓存（持久化避免每次重建下载）
+      - paddleocr-models:/root/.paddleocr
+      - paddlex-models:/root/.paddlex
+    restart: unless-stopped
+    # CPU 限制（可选）
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: "4"
+    #       memory: "4G"
+
+volumes:
+  paddleocr-models:
+  paddlex-models:

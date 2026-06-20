@@ -24,6 +24,50 @@ uv run streamlit run app.py
 
 打开 http://localhost:8501
 
+## Docker 部署
+
+```bash
+# 构建并启动
+docker compose up -d
+
+# 查看日志
+docker compose logs -f
+
+# 停止
+docker compose down
+
+# 首次启动需等待模型下载（约 1-2 分钟）
+docker compose logs -f | grep "Uvicorn server started"
+```
+
+模型缓存持久化在 Docker volumes 中，重启/更新容器不需要重新下载。
+
+### 环境变量
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `SILICONFLOW_API_KEY` | — | SiliconFlow API 密钥（云端模型需配置） |
+| `STREAMLIT_SERVER_MAX_UPLOAD_SIZE` | 50 | 上传文件大小限制 (MB) |
+
+## 项目结构
+
+```
+py/ocr-demo/
+├── app.py                          # Streamlit 主应用
+├── modules/
+│   ├── restoration/                # 图像修复算法模块
+│   │   ├── __init__.py             # 公共 API
+│   │   ├── bm3d.py                 # 自定义 BM3D 去噪
+│   │   ├── filters.py              # 维纳滤波 / RL 反卷积 / PSF 估计
+│   │   └── utils.py                # 退化检测 / 指标 / 增强管线
+│   └── document_enhancement.py     # 文档增强（扫描王风格）
+├── Dockerfile                      # Docker 构建文件
+├── docker-compose.yml              # Docker Compose 配置
+├── _sample/                        # 测试样本图片
+├── _temp/                          # 临时文件
+└── requirements.txt                # Python 依赖
+```
+
 ## 图像增强技术参考
 
 图像修复算法移植自 [VisionRestorePro-Classical_Image_Restoration_System](https://github.com/C-loud-Nine/VisionRestorePro-Classical_Image_Restoration_System-IPCV_Project) (MIT License)，包含以下经典算法：
@@ -48,21 +92,6 @@ img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB).astype(np.float64) / 255.0
 restored = restore_image_with_degradation_awareness(img_rgb)
 ```
 
-## 项目结构
-
-```
-py/ocr-demo/
-├── app.py                          # Streamlit 主应用
-├── modules/
-│   └── restoration/                # 图像修复算法模块
-│       ├── __init__.py             # 公共 API
-│       ├── bm3d.py                 # 自定义 BM3D 去噪
-│       ├── filters.py              # 维纳滤波 / RL 反卷积 / PSF 估计
-│       └── utils.py                # 退化检测 / 指标 / 增强管线
-├── _sample/                        # 测试样本图片
-├── _temp/                          # 临时文件（上传/修复缓存）
-└── requirements.txt                # Python 依赖
-```
 
 ## 依赖
 
