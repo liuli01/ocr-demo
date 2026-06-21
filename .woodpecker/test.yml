@@ -11,7 +11,9 @@ steps:
       PIP_INDEX_URL: https://pypi.tuna.tsinghua.edu.cn/simple
       PIP_TRUSTED_HOST: pypi.tuna.tsinghua.edu.cn
     commands:
-      # 安装依赖
+      # 安装系统依赖（opencv 需要 libGL）
+      - apt-get update && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 && rm -rf /var/lib/apt/lists/*
+      # 安装 Python 依赖
       - pip install --no-cache-dir -r requirements.txt
       # 验证关键依赖可导入
       - python -c "import streamlit; import openai; import PIL; import cv2; import numpy; print('All imports OK')"
