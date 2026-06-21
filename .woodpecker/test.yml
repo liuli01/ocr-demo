@@ -8,6 +8,8 @@ steps:
     image: python:3.12-slim
     environment:
       PYTHONUNBUFFERED: 1
+      PIP_INDEX_URL: https://pypi.tuna.tsinghua.edu.cn/simple
+      PIP_TRUSTED_HOST: pypi.tuna.tsinghua.edu.cn
     commands:
       # 安装依赖
       - pip install --no-cache-dir -r requirements.txt
