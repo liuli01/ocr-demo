@@ -36,30 +36,4 @@ steps:
         done
         echo "⚠️ 健康检查超时：docker logs ocr-demo" && exit 1
 
-  - name: notify
-    image: alpine:latest
-    environment:
-      NOTIFY_WEBHOOK:
-        from_secret: notify_webhook
-      DEPLOY_STATUS: success
-    commands:
-      - apk add --no-cache curl
-      - |
-        STATUS="success"
-        [ "$CI_PIPELINE_STATUS" = "failure" ] && STATUS="failure"
-        curl -s -X POST -H "Content-Type: application/json" \
-          -d "{
-            \"msg_type\": \"interactive\",
-            \"card\": {
-              \"header\": {
-                \"title\": {\"tag\": \"plain_text\", \"content\": \"ocr-demo ${STATUS}\"},
-                \"template\": \"${STATUS}\"
-              },
-              \"elements\": [
-                {\"tag\": \"div\", \"text\": {\"tag\": \"lark_md\", \"content\": \"**仓库**: $CI_REPO\n**分支**: $CI_COMMIT_BRANCH\n**提交**: ${CI_COMMIT_SHA:0:8}\n**版本**: ${CI_COMMIT_TAG:-latest}\"}}
-              ]
-            }
-          }" \
-          "$NOTIFY_WEBHOOK" || echo "通知发送失败（可忽略）"
-    when:
-      - status: [success, failure]
+  # 通知暂时去掉，等配置了飞书 Webhook 再加
