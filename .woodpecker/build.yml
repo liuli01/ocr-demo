@@ -1,12 +1,24 @@
 depends_on:
   - test
 
+clone:
+  disable: true
+
 when:
   - event: push
     branch: main
   - event: tag
 
 steps:
+  - name: clone
+    image: alpine/git
+    environment:
+      GH_MIRROR: https://ghproxy.com/
+    commands:
+      - apk add --no-cache curl
+      - git clone https://github.com/liuli01/ocr-demo.git . || git clone ${GH_MIRROR}https://github.com/liuli01/ocr-demo.git .
+      - git checkout $CI_COMMIT_BRANCH || git checkout $CI_COMMIT_TAG || true
+
   - name: build-and-push
     image: docker:latest
     volumes:
@@ -20,13 +32,9 @@ steps:
       NAMESPACE: woodpeacker
       DOCKER_BUILDKIT: 1
     commands:
-      # 登录 ACR（凭据来自 Woodpecker Secret）
       - echo "$REGISTRY_PASSWORD" | docker login $REGISTRY_URL -u "$REGISTRY_USER" --password-stdin
-      # 构建镜像
       - docker build --cache-from $REGISTRY_URL/$NAMESPACE/ocr-demo:latest -t $REGISTRY_URL/$NAMESPACE/ocr-demo:latest .
-      # 版本标签
       - if [ -n "$CI_COMMIT_TAG" ]; then
           docker tag $REGISTRY_URL/$NAMESPACE/ocr-demo:latest $REGISTRY_URL/$NAMESPACE/ocr-demo:$CI_COMMIT_TAG;
         fi
-      # 推送
       - docker push $REGISTRY_URL/$NAMESPACE/ocr-demo --all-tags

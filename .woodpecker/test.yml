@@ -1,9 +1,22 @@
+clone:
+  disable: true
+
 when:
-  - event: push                         # 所有分支 push 都跑测试
-  - event: pull_request                 # PR 自动测试
+  - event: push
+  - event: pull_request
     branch: main
 
 steps:
+  - name: clone
+    image: alpine/git
+    environment:
+      GH_MIRROR: https://ghproxy.com/
+    commands:
+      - apk add --no-cache curl
+      # 尝试直连 GitHub，失败则走镜像
+      - git clone https://github.com/liuli01/ocr-demo.git . || git clone ${GH_MIRROR}https://github.com/liuli01/ocr-demo.git .
+      - git checkout $CI_COMMIT_BRANCH || git checkout $CI_COMMIT_TAG || true
+
   - name: test
     image: python:3.12-slim
     environment:
@@ -11,9 +24,6 @@ steps:
       PIP_INDEX_URL: https://pypi.tuna.tsinghua.edu.cn/simple
       PIP_TRUSTED_HOST: pypi.tuna.tsinghua.edu.cn
     commands:
-      # 安装系统依赖（opencv 需要 libGL）
       - apt-get update && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 && rm -rf /var/lib/apt/lists/*
-      # 安装 Python 依赖
       - pip install --no-cache-dir -r requirements.txt
-      # 验证关键依赖可导入
       - python -c "import streamlit; import openai; import PIL; import cv2; import numpy; print('All imports OK')"
