@@ -1,23 +1,12 @@
 depends_on:
   - build
 
-clone:
-  git:
-    disable: true
-
 when:
   - event: push
     branch: main
   - event: tag
 
 steps:
-  - name: clone
-    image: alpine/git
-    commands:
-      - apk add --no-cache curl
-      - git clone https://admin:9382bd0ae1d5fc1af2aee1d330f92c6b2aac0258@gitea.csceccloud.net:1443/admin/ocr-demo.git .
-      - git checkout $CI_COMMIT_BRANCH 2>/dev/null || git checkout $CI_COMMIT_TAG 2>/dev/null || true
-
   - name: deploy
     image: docker:latest
     volumes:
