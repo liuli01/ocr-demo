@@ -1,5 +1,6 @@
 clone:
-  disable: true
+  git:
+    disable: true
 
 when:
   - event: push
@@ -9,13 +10,11 @@ when:
 steps:
   - name: clone
     image: alpine/git
-    environment:
-      GH_MIRROR: https://ghproxy.com/
     commands:
       - apk add --no-cache curl
-      # 尝试直连 GitHub，失败则走镜像
-      - git clone https://github.com/liuli01/ocr-demo.git . || git clone ${GH_MIRROR}https://github.com/liuli01/ocr-demo.git .
-      - git checkout $CI_COMMIT_BRANCH || git checkout $CI_COMMIT_TAG || true
+      # 从 Gitea 克隆（国内网络，速度快）
+      - git clone https://admin:9382bd0ae1d5fc1af2aee1d330f92c6b2aac0258@gitea.csceccloud.net:1443/admin/ocr-demo.git .
+      - git checkout $CI_COMMIT_BRANCH 2>/dev/null || git checkout $CI_COMMIT_TAG 2>/dev/null || true
 
   - name: test
     image: python:3.12-slim
